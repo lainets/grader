@@ -6,3 +6,4 @@ docutils~=0.17.1
 python-magic~=0.4.22
 --extra-index-url https://test.pypi.org/simple/
 aplus-auth~=0.0.1
+docker~=5.0.0
