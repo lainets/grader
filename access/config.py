@@ -42,7 +42,7 @@ def _ext_exercise_loader(course_root, exercise_key, course_dir):
     @rtype: C{str}, C{dict}
     @return: exercise config file path, modified time and data dict
     '''
-    config_file = os.path.join(course_dir, exercise_key) + ".json"
+    config_file = os.path.join(course_dir, "exercises", exercise_key) + ".json"
     with open(config_file) as f:
         data = json.load(f)
     ndata = {}

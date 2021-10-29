@@ -69,12 +69,16 @@ def configure(request):
     course_path = Path(settings.COURSES_PATH, course_id)
     if course_path.exists():
         rmtree(course_path)
-    course_path.mkdir(parents=True, exist_ok=True)
+
+    course_files_path = course_path / "files"
+    course_exercises_path = course_path / "exercises"
+    course_files_path.mkdir(parents=True, exist_ok=True)
+    course_exercises_path.mkdir(parents=True, exist_ok=True)
 
     if "files" in request.FILES:
         zip_file = request.FILES["files"].file
         ziph = ZipFile(zip_file, "r")
-        extract_all(ziph, course_path)
+        extract_all(ziph, course_files_path)
 
     course_config = {
         "name": course_id,
@@ -86,7 +90,7 @@ def configure(request):
         json.dump(course_config, f)
 
     for info in exercises:
-        with open(course_path / (info["key"] + ".json"), "w") as f:
+        with open(course_exercises_path / (info["key"] + ".json"), "w") as f:
             json.dump(info["config"], f)
 
     defaults = {}
