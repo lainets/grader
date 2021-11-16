@@ -20,6 +20,7 @@ from access.config import DEFAULT_LANG, ConfigError, config
 from util import export
 from util.files import (
     read_and_remove_submission_meta,
+    renames,
     write_submission_meta,
 )
 from util.http import post_data
@@ -48,13 +49,62 @@ def index(request):
     })
 
 
+def publish(request):
+    """
+    Move a course from store to the main folder
+    """
+    if request.method != "POST":
+        raise Http404()
+
+    if "course_id" not in request.POST:
+        return HttpResponse("Missing course_id", status=400)
+
+    course_id = request.POST["course_id"]
+
+    if not request.auth.permissions.instances.has(Permission.WRITE, id=int(course_id)):
+        return HttpResponse(status=401)
+
+    root_dir = Path(settings.COURSES_PATH)
+    store_root_dir = Path(settings.COURSE_STORE)
+    course_path = root_dir / course_id
+    store_course_path = store_root_dir / course_id
+    version_id_path = root_dir / (course_id + ".version")
+    store_version_id_path = store_root_dir / (course_id + ".version")
+
+    store_version_id = None
+    if store_version_id_path.exists():
+        with open(store_version_id_path) as f:
+            store_version_id = f.read()
+
+    if store_version_id == request.POST.get("version_id"):
+        renames([
+            (store_version_id_path, version_id_path),
+            (store_course_path, course_path),
+        ])
+
+        return HttpResponse()
+
+    version_id = None
+    if version_id_path.exists():
+        with open(version_id_path) as f:
+            version_id = f.read()
+
+    if version_id == request.POST.get("version_id"):
+        return HttpResponse()
+    else:
+        return HttpResponse("Unknown version id", status=400)
+
+
 @login_required
 def configure(request):
     '''
-    Configure a course.
+    Configure a course according to the gitmanager protocol.
     '''
     if request.method != "POST":
         raise Http404()
+
+    if "publish" in request.POST and request.POST["publish"]:
+        return publish(request)
 
     if "exercises" not in request.POST or "course_id" not in request.POST:
         return HttpResponse("Missing exercises or course_id", status=400)
@@ -65,12 +115,14 @@ def configure(request):
     if not request.auth.permissions.instances.has(Permission.WRITE, id=int(course_id)):
         return HttpResponse(status=401)
 
-    course_path = Path(settings.COURSES_PATH, course_id)
+    root_dir = Path(settings.COURSE_STORE)
+    course_path = root_dir / course_id
     if course_path.exists():
         rmtree(course_path)
 
     course_files_path = course_path / "files"
     course_exercises_path = course_path / "exercises"
+    version_id_path = root_dir / (course_id + ".version")
     course_files_path.mkdir(parents=True, exist_ok=True)
     course_exercises_path.mkdir(parents=True, exist_ok=True)
 
@@ -92,12 +144,20 @@ def configure(request):
         with open(course_exercises_path / (info["key"] + ".json"), "w") as f:
             json.dump(info["config"], f)
 
+    if "version_id" in request.POST:
+        with open(version_id_path, "w") as f:
+            f.write(request.POST["version_id"])
+    elif version_id_path.exists():
+        version_id_path.unlink()
+
+    course_config = config._course_root_from_root_dir(course_id, root_dir)
+
     defaults = {}
     for info in exercises:
         of = info["spec"]
         if info.get("config"):
             of["config"] = info["key"] + ".json"
-            course, exercise = config.exercise_entry(course_id, info["key"], "_root")
+            course, exercise = config.exercise_entry(course_config, info["key"], "_root")
             of = export.exercise(request, course, exercise, of)
         defaults[of["key"]] = of
 
