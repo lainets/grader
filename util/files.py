@@ -5,6 +5,10 @@ Utility functions for exercise files.
 from django.conf import settings
 import datetime, random, string, os, shutil, json
 from pathlib import Path
+import tempfile
+from typing import Iterable, Optional, Tuple, Union
+
+from util.typing import PathLike
 
 META_PATH = os.path.join(settings.SUBMISSION_PATH, "meta")
 if not os.path.exists(META_PATH):
@@ -150,3 +154,80 @@ def read_and_remove_submission_meta(sid):
     except (OSError, ValueError):
         return None
     return data
+
+
+def rm_path(path: PathLike) -> None:
+    path = Path(os.fspath(path))
+    if path.is_dir():
+        shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
+def _tmp_path(path) -> str:
+    """
+    returns a path to a temporary file/directory (same as <path>) in the same
+    place as <path> with the name prefixed with <path>s name.
+    """
+    dir, name = os.path.split(path)
+    if os.path.isdir(path):
+        tmp = tempfile.mkdtemp(prefix=name, dir=dir)
+    else:
+        fd, tmp = tempfile.mkstemp(prefix=name, dir=dir)
+        os.close(fd)
+    return tmp
+
+
+def rename(src: PathLike, dst: PathLike, keep_tmp=False) -> Optional[str]:
+    """
+    renames a file or directory while making sure that the destination will only be removed if successful.
+    returns None if keep_tmp = False. Otherwise, returns a tmp path to dst (None if dst does not exist).
+    """
+    tmpdst = None
+
+    src, dst = os.fspath(src), os.fspath(dst)
+    if not os.path.exists(dst) or (os.path.isfile(dst) and os.path.isfile(src)):
+        if keep_tmp and os.path.exists(dst):
+            tmpdst = _tmp_path(dst)
+            os.rename(dst, tmpdst)
+
+        try:
+            os.rename(src, dst)
+        except:
+            if tmpdst:
+                os.rename(tmpdst, dst)
+            raise
+    else:
+        tmpdst = _tmp_path(dst)
+        try:
+            os.rename(dst, tmpdst)
+            os.rename(src, dst)
+        except:
+            os.rename(tmpdst, dst)
+            raise
+        else:
+            if not keep_tmp:
+                rm_path(tmpdst)
+
+    return tmpdst
+
+
+def renames(pairs: Iterable[Tuple[PathLike, PathLike]]) -> None:
+    """
+    Renames multiple files and directories while making sure that either all or none succeed.
+    """
+    done = set()
+    try:
+        for src, dst in pairs:
+            tmpdst = rename(src, dst, True)
+            done.add((src, dst, tmpdst))
+    except:
+        for src, dst, tmp in done:
+            rename(dst, src)
+            if os.path.exists(tmp):
+                rename(tmp, dst)
+        raise
+    else:
+        for _, _, tmp in done:
+            if tmp is not None:
+                rm_path(tmp)
