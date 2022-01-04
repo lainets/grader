@@ -1,5 +1,5 @@
 # mooc-grader
-
+ 
 This grading service accepts anonymous submissions for grading via HTTP.
 The submissions are graded either synchronously in the web application or
 asynchronously in containers (usually in Kubernetes, though it is possible
